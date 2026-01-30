@@ -1,0 +1,12 @@
+.home-resorts_card:last-child .home-resorts_item {
+  padding-bottom: 0rem;
+}
+
+.home-resorts_left_image-link {
+  transition: opacity 0.4s ease;
+  opacity: 0;
+}
+
+.home-resorts_left_image-link.is-active {
+  opacity: 1;
+}
