@@ -1,0 +1,10 @@
+@media only screen and (min-width: 992px) {
+  .w-dyn-item:nth-child(even) .restaurant_component {
+    padding: 0rem 0rem 0rem 14rem;
+  }
+
+  .w-dyn-item:nth-child(even) .restaurant_component .restaurant_image2 {
+    left: -14rem;
+    right: auto;
+  }
+}
