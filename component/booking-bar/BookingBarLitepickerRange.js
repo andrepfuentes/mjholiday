@@ -1,23 +1,7 @@
 /**
  * ---------------------------------------------------------------------------
  * BOOKING BAR — LITEPICKER RANGE + UI SYNC (Webflow)
- * ---------------------------------------------------------------------------
- * Purpose:
- * - Initializes Litepicker as a date range picker (arrival/departure).
- * - Syncs selected dates to:
- *     - Display element: `.booking-bar_dropdown_dates`
- *     - Hidden/real inputs: `#arrive`, `#depart`
- * - Defaults to today + tomorrow on first load.
- * - Applies single-letter weekday labels per locale.
- *
- * Requirements:
- * - Litepicker loaded globally (window.Litepicker)
- * - dayjs loaded globally (window.dayjs)
- * - An element with id `datepicker`
- *
- * Notes:
- * - Designed to be safe and idempotent-ish (won't crash if elements are missing).
- * - Set DEBUG to true to enable console logs.
+ * + Optional restriction: disable dates until October for a specific localisation
  * ---------------------------------------------------------------------------
  */
 
@@ -29,16 +13,20 @@
     display: '.booking-bar_dropdown_dates',
     arrive: '#arrive',
     depart: '#depart',
+    localisation: '#localisation',
   };
 
   const DATE_FORMAT = 'DD/MM/YYYY';
   const MOBILE_BREAKPOINT = 768;
 
+  // If this localisation matches, disable all dates before Oct 1st (current year)
+  const RESTRICTED_LOCALISATION_URL =
+    'https://booking.mjholidays.com/premium/index2.html?id_stile=22444&lingua_int=eng&id_albergo=29785&dc=1820';
+
   const log = (...args) => DEBUG && console.log('[BookingBar Litepicker]', ...args);
   const warn = (...args) => console.warn('[BookingBar Litepicker]', ...args);
 
   function getLang() {
-    // Normalize to short lang like "fr" from "fr-FR"
     const raw = document.documentElement.lang || 'en';
     return raw.split('-')[0].toLowerCase();
   }
@@ -56,6 +44,62 @@
     };
   }
 
+  function decodeHtmlEntities(str) {
+    if (!str || typeof str !== 'string') return '';
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = str;
+    return textarea.value;
+  }
+
+  function normalizeUrlForCompare(url) {
+    // Decode entities and trim; also helps if Webflow gives &amp; in attributes.
+    return decodeHtmlEntities(url).trim();
+  }
+
+  function getLocalisationValue() {
+    const el = document.querySelector(SELECTORS.localisation);
+    if (!el) return '';
+    return normalizeUrlForCompare(el.value || '');
+  }
+
+  function isRestrictedLocalisation(localisationValue) {
+    if (!localisationValue) return false;
+
+    // Strict match first (best)
+    if (localisationValue === RESTRICTED_LOCALISATION_URL) return true;
+
+    // Defensive fallback: match by key params (in case ordering changes)
+    // (Keeps this working if someone reorders query params.)
+    try {
+      const u = new URL(localisationValue);
+      const p = u.searchParams;
+      return (
+        u.origin === 'https://booking.mjholidays.com' &&
+        u.pathname.includes('/premium/index2.html') &&
+        p.get('id_stile') === '22444' &&
+        p.get('lingua_int') === 'eng' &&
+        p.get('id_albergo') === '29785' &&
+        p.get('dc') === '1820'
+      );
+    } catch (e) {
+      // If URL() fails (some environments), fall back to substring checks
+      return (
+        localisationValue.includes('booking.mjholidays.com/premium/index2.html') &&
+        localisationValue.includes('id_stile=22444') &&
+        localisationValue.includes('lingua_int=eng') &&
+        localisationValue.includes('id_albergo=29785') &&
+        localisationValue.includes('dc=1820')
+      );
+    }
+  }
+
+  function getOctFirstMinDate(todayDayjs) {
+    // Oct 1st of the current year
+    const year = todayDayjs.year();
+    // dayjs month is 0-indexed: 9 = October
+    return dayjs(new Date(year, 9, 1, 0, 0, 0, 0));
+  }
+
   function formatDayjs(d) {
     return d.format(DATE_FORMAT);
   }
@@ -67,7 +111,6 @@
   }
 
   document.addEventListener('DOMContentLoaded', function onReady() {
-    // Guard: required globals
     if (!window.dayjs) {
       warn('dayjs not found. Aborting.');
       return;
@@ -92,13 +135,28 @@
     const departEl = document.querySelector(SELECTORS.depart);
 
     const today = dayjs();
-    const tomorrow = today.add(1, 'day');
 
-    const initialStart = formatDayjs(today);
-    const initialEnd = formatDayjs(tomorrow);
+    // --- Restriction logic (grey out / disable until October)
+    const localisationValue = getLocalisationValue();
+    const restricted = isRestrictedLocalisation(localisationValue);
 
-    log('DOM loaded. Initializing…');
-    log('Detected language:', lang);
+    let minDateDayjs = today; // default: today
+    if (restricted) {
+      const octFirst = getOctFirstMinDate(today);
+      // Only restrict if we're before Oct 1
+      if (today.isBefore(octFirst, 'day')) {
+        minDateDayjs = octFirst;
+      }
+      log('Restricted localisation detected:', localisationValue);
+      log('Applying minDate:', minDateDayjs.format(DATE_FORMAT));
+    }
+
+    // Initial range: default is minDate + 1 day
+    const initialStartDayjs = minDateDayjs;
+    const initialEndDayjs = minDateDayjs.add(1, 'day');
+
+    const initialStart = formatDayjs(initialStartDayjs);
+    const initialEnd = formatDayjs(initialEndDayjs);
 
     // Initial UI + inputs
     setInitialValues({
@@ -119,12 +177,15 @@
       format: DATE_FORMAT,
       autoApply: true,
       mobileFriendly: true,
-      minDate: today.toDate(),
-      startDate: today.toDate(),
-      endDate: tomorrow.toDate(),
-      lang: lang,
 
-      // Litepicker i18n structure supports per-lang dictionary
+      // 👇 This is what greys-out (disables) everything before minDate
+      minDate: minDateDayjs.toDate(),
+
+      // Initial selection
+      startDate: initialStartDayjs.toDate(),
+      endDate: initialEndDayjs.toDate(),
+
+      lang: lang,
       i18n: {
         [lang]: { ...i18nConfig },
       },
