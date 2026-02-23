@@ -1,175 +1,172 @@
 /**
- * ---------------------------------------------------------------------------
- * BOOKING BAR — LITEPICKER RANGE + UI SYNC (Webflow)
- * + Optional restriction: disable dates until October for a specific localisation
- * ---------------------------------------------------------------------------
- */
+* ---------------------------------------------------------------------------
+* BOOKING BAR — LITEPICKER RANGE + UI SYNC (Webflow)
+* + Reacts to localisation input changes (MutationObserver + polling fallback)
+* + For one specific localisation URL: disable dates until Oct 1 (current year)
+* ---------------------------------------------------------------------------
+*/
 
 (function BookingBarLitepickerRange() {
-  const DEBUG = false;
+const DEBUG = false;
 
-  const SELECTORS = {
-    datepicker: '#datepicker',
-    display: '.booking-bar_dropdown_dates',
-    arrive: '#arrive',
-    depart: '#depart',
-    localisation: '#localisation',
+const SELECTORS = {
+  datepicker: "#datepicker",
+  display: ".booking-bar_dropdown_dates",
+  arrive: "#arrive",
+  depart: "#depart",
+  localisation: "#localisation",
+};
+
+const DATE_FORMAT = "DD/MM/YYYY";
+const MOBILE_BREAKPOINT = 768;
+
+// If localisation matches this property, disable all dates before Oct 1 (current year)
+const RESTRICTED_LOCALISATION_URL =
+  "https://booking.mjholidays.com/premium/index2.html?id_stile=22444&lingua_int=eng&id_albergo=29785&dc=1820";
+
+const log = (...args) => DEBUG && console.log("[BookingBar Litepicker]", ...args);
+const warn = (...args) => console.warn("[BookingBar Litepicker]", ...args);
+
+function getLang() {
+  const raw = document.documentElement.lang || "en";
+  return raw.split("-")[0].toLowerCase();
+}
+
+function getWeekdayOverrides() {
+  const shortWeekdaysEN = ["S", "M", "T", "W", "T", "F", "S"];
+  return {
+    en: { weekdays: shortWeekdaysEN },
+    fr: { weekdays: ["D", "L", "M", "M", "J", "V", "S"] },
+    pt: { weekdays: ["D", "S", "T", "Q", "Q", "S", "S"] },
+    de: { weekdays: ["S", "M", "D", "M", "D", "F", "S"] },
+    es: { weekdays: ["D", "L", "M", "X", "J", "V", "S"] },
+    _default: { weekdays: shortWeekdaysEN },
   };
+}
 
-  const DATE_FORMAT = 'DD/MM/YYYY';
-  const MOBILE_BREAKPOINT = 768;
+function decodeHtmlEntities(str) {
+  if (!str || typeof str !== "string") return "";
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = str;
+  return textarea.value;
+}
 
-  // If this localisation matches, disable all dates before Oct 1st (current year)
-  const RESTRICTED_LOCALISATION_URL =
-    'https://booking.mjholidays.com/premium/index2.html?id_stile=22444&lingua_int=eng&id_albergo=29785&dc=1820';
+function normalizeUrlForCompare(url) {
+  return decodeHtmlEntities(url).trim();
+}
 
-  const log = (...args) => DEBUG && console.log('[BookingBar Litepicker]', ...args);
-  const warn = (...args) => console.warn('[BookingBar Litepicker]', ...args);
+function getLocalisationValue() {
+  const el = document.querySelector(SELECTORS.localisation);
+  if (!el) return "";
+  // Prefer .value (what matters in forms); normalize HTML entities either way
+  return normalizeUrlForCompare(el.value || "");
+}
 
-  function getLang() {
-    const raw = document.documentElement.lang || 'en';
-    return raw.split('-')[0].toLowerCase();
+function isRestrictedLocalisation(localisationValue) {
+  if (!localisationValue) return false;
+
+  // Strict match
+  if (localisationValue === RESTRICTED_LOCALISATION_URL) return true;
+
+  // Defensive match by params (in case ordering changes)
+  try {
+    const u = new URL(localisationValue);
+    const p = u.searchParams;
+    return (
+      u.origin === "https://booking.mjholidays.com" &&
+      u.pathname.includes("/premium/index2.html") &&
+      p.get("id_stile") === "22444" &&
+      p.get("lingua_int") === "eng" &&
+      p.get("id_albergo") === "29785" &&
+      p.get("dc") === "1820"
+    );
+  } catch (e) {
+    // URL() may fail if the string is malformed; fallback to substring checks
+    return (
+      localisationValue.includes("booking.mjholidays.com/premium/index2.html") &&
+      localisationValue.includes("id_stile=22444") &&
+      localisationValue.includes("lingua_int=eng") &&
+      localisationValue.includes("id_albergo=29785") &&
+      localisationValue.includes("dc=1820")
+    );
+  }
+}
+
+function getOctFirst(todayDayjs) {
+  const year = todayDayjs.year();
+  // Month is 0-based, 9 = October
+  return dayjs(new Date(year, 9, 1, 0, 0, 0, 0));
+}
+
+function computeMinDateDayjs(todayDayjs, localisationValue) {
+  const restricted = isRestrictedLocalisation(localisationValue);
+  if (!restricted) return todayDayjs;
+
+  const octFirst = getOctFirst(todayDayjs);
+  // Only enforce restriction if we are before Oct 1
+  if (todayDayjs.isBefore(octFirst, "day")) return octFirst;
+
+  return todayDayjs;
+}
+
+function setInitialValues({ displayEl, arriveEl, departEl, startStr, endStr }) {
+  if (displayEl) displayEl.textContent = `${startStr} - ${endStr}`;
+  if (arriveEl) arriveEl.value = startStr;
+  if (departEl) departEl.value = endStr;
+}
+
+document.addEventListener("DOMContentLoaded", function onReady() {
+  if (!window.dayjs) {
+    warn("dayjs not found. Aborting.");
+    return;
+  }
+  if (!window.Litepicker) {
+    warn("Litepicker not found. Aborting.");
+    return;
   }
 
-  function getWeekdayOverrides() {
-    const shortWeekdaysEN = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-    return {
-      en: { weekdays: shortWeekdaysEN },
-      fr: { weekdays: ['D', 'L', 'M', 'M', 'J', 'V', 'S'] },
-      pt: { weekdays: ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'] },
-      de: { weekdays: ['S', 'M', 'D', 'M', 'D', 'F', 'S'] },
-      es: { weekdays: ['D', 'L', 'M', 'X', 'J', 'V', 'S'] },
-      _default: { weekdays: shortWeekdaysEN },
-    };
+  const datepickerEl = document.querySelector(SELECTORS.datepicker);
+  if (!datepickerEl) {
+    warn(`Missing ${SELECTORS.datepicker}. Aborting.`);
+    return;
   }
 
-  function decodeHtmlEntities(str) {
-    if (!str || typeof str !== 'string') return '';
-    const textarea = document.createElement('textarea');
-    textarea.innerHTML = str;
-    return textarea.value;
-  }
+  const displayEl = document.querySelector(SELECTORS.display);
+  const arriveEl = document.querySelector(SELECTORS.arrive);
+  const departEl = document.querySelector(SELECTORS.depart);
+  const localisationEl = document.querySelector(SELECTORS.localisation);
 
-  function normalizeUrlForCompare(url) {
-    // Decode entities and trim; also helps if Webflow gives &amp; in attributes.
-    return decodeHtmlEntities(url).trim();
-  }
+  const lang = getLang();
+  const weekdayOverrides = getWeekdayOverrides();
+  const i18nConfig = weekdayOverrides[lang] || weekdayOverrides._default;
 
-  function getLocalisationValue() {
-    const el = document.querySelector(SELECTORS.localisation);
-    if (!el) return '';
-    return normalizeUrlForCompare(el.value || '');
-  }
+  let picker = null;
+  let lastLocalisationValue = null;
 
-  function isRestrictedLocalisation(localisationValue) {
-    if (!localisationValue) return false;
-
-    // Strict match first (best)
-    if (localisationValue === RESTRICTED_LOCALISATION_URL) return true;
-
-    // Defensive fallback: match by key params (in case ordering changes)
-    // (Keeps this working if someone reorders query params.)
-    try {
-      const u = new URL(localisationValue);
-      const p = u.searchParams;
-      return (
-        u.origin === 'https://booking.mjholidays.com' &&
-        u.pathname.includes('/premium/index2.html') &&
-        p.get('id_stile') === '22444' &&
-        p.get('lingua_int') === 'eng' &&
-        p.get('id_albergo') === '29785' &&
-        p.get('dc') === '1820'
-      );
-    } catch (e) {
-      // If URL() fails (some environments), fall back to substring checks
-      return (
-        localisationValue.includes('booking.mjholidays.com/premium/index2.html') &&
-        localisationValue.includes('id_stile=22444') &&
-        localisationValue.includes('lingua_int=eng') &&
-        localisationValue.includes('id_albergo=29785') &&
-        localisationValue.includes('dc=1820')
-      );
-    }
-  }
-
-  function getOctFirstMinDate(todayDayjs) {
-    // Oct 1st of the current year
-    const year = todayDayjs.year();
-    // dayjs month is 0-indexed: 9 = October
-    return dayjs(new Date(year, 9, 1, 0, 0, 0, 0));
-  }
-
-  function formatDayjs(d) {
-    return d.format(DATE_FORMAT);
-  }
-
-  function setInitialValues({ displayEl, arriveEl, departEl, startStr, endStr }) {
-    if (displayEl) displayEl.textContent = `${startStr} - ${endStr}`;
-    if (arriveEl) arriveEl.value = startStr;
-    if (departEl) departEl.value = endStr;
-  }
-
-  document.addEventListener('DOMContentLoaded', function onReady() {
-    if (!window.dayjs) {
-      warn('dayjs not found. Aborting.');
-      return;
-    }
-    if (!window.Litepicker) {
-      warn('Litepicker not found. Aborting.');
-      return;
-    }
-
-    const lang = getLang();
-    const weekdayOverrides = getWeekdayOverrides();
-    const i18nConfig = weekdayOverrides[lang] || weekdayOverrides._default;
-
-    const datepickerEl = document.querySelector(SELECTORS.datepicker);
-    if (!datepickerEl) {
-      warn(`Missing ${SELECTORS.datepicker}. Aborting.`);
-      return;
-    }
-
-    const displayEl = document.querySelector(SELECTORS.display);
-    const arriveEl = document.querySelector(SELECTORS.arrive);
-    const departEl = document.querySelector(SELECTORS.depart);
-
+  function buildPicker() {
     const today = dayjs();
-
-    // --- Restriction logic (grey out / disable until October)
     const localisationValue = getLocalisationValue();
-    const restricted = isRestrictedLocalisation(localisationValue);
+    const minDateDayjs = computeMinDateDayjs(today, localisationValue);
 
-    let minDateDayjs = today; // default: today
-    if (restricted) {
-      const octFirst = getOctFirstMinDate(today);
-      // Only restrict if we're before Oct 1
-      if (today.isBefore(octFirst, 'day')) {
-        minDateDayjs = octFirst;
-      }
-      log('Restricted localisation detected:', localisationValue);
-      log('Applying minDate:', minDateDayjs.format(DATE_FORMAT));
-    }
+    // Initial selection snaps to minDate
+    const startDayjs = minDateDayjs;
+    const endDayjs = minDateDayjs.add(1, "day");
 
-    // Initial range: default is minDate + 1 day
-    const initialStartDayjs = minDateDayjs;
-    const initialEndDayjs = minDateDayjs.add(1, 'day');
+    const startStr = startDayjs.format(DATE_FORMAT);
+    const endStr = endDayjs.format(DATE_FORMAT);
 
-    const initialStart = formatDayjs(initialStartDayjs);
-    const initialEnd = formatDayjs(initialEndDayjs);
-
-    // Initial UI + inputs
+    // Sync UI + hidden inputs
     setInitialValues({
       displayEl,
       arriveEl,
       departEl,
-      startStr: initialStart,
-      endStr: initialEnd,
+      startStr,
+      endStr,
     });
 
     const isMobile = window.innerWidth < MOBILE_BREAKPOINT;
 
-    const picker = new Litepicker({
+    picker = new Litepicker({
       element: datepickerEl,
       singleMode: false,
       numberOfMonths: isMobile ? 1 : 2,
@@ -178,12 +175,12 @@
       autoApply: true,
       mobileFriendly: true,
 
-      // 👇 This is what greys-out (disables) everything before minDate
+      // ✅ Greys out / disables everything before this
       minDate: minDateDayjs.toDate(),
 
-      // Initial selection
-      startDate: initialStartDayjs.toDate(),
-      endDate: initialEndDayjs.toDate(),
+      // Initial range
+      startDate: startDayjs.toDate(),
+      endDate: endDayjs.toDate(),
 
       lang: lang,
       i18n: {
@@ -191,23 +188,72 @@
       },
 
       setup: (pickerInstance) => {
-        pickerInstance.on('selected', (startDate, endDate) => {
-          const startStr = startDate.format(DATE_FORMAT);
-          const endStr = endDate.format(DATE_FORMAT);
+        pickerInstance.on("selected", (startDate, endDate) => {
+          const startStr2 = startDate.format(DATE_FORMAT);
+          const endStr2 = endDate.format(DATE_FORMAT);
 
           setInitialValues({
             displayEl,
             arriveEl,
             departEl,
-            startStr,
-            endStr,
+            startStr: startStr2,
+            endStr: endStr2,
           });
 
-          log('User selected:', { arrival: startStr, departure: endStr });
+          log("User selected:", { arrival: startStr2, departure: endStr2 });
         });
       },
     });
 
-    log('Initialized.', picker);
-  });
+    log("Picker built. minDate =", minDateDayjs.format(DATE_FORMAT), "localisation =", localisationValue);
+  }
+
+  function destroyPicker() {
+    if (!picker) return;
+    try {
+      // Litepicker supports destroy() in most versions
+      picker.destroy();
+      log("Picker destroyed.");
+    } catch (e) {
+      warn("Failed to destroy picker cleanly:", e);
+    } finally {
+      picker = null;
+    }
+  }
+
+  function rebuildPickerIfNeeded() {
+    const current = getLocalisationValue();
+    if (!current) return; // ignore empty
+    if (current === lastLocalisationValue) return;
+
+    lastLocalisationValue = current;
+    log("Localisation changed => rebuilding picker:", current);
+
+    destroyPicker();
+    buildPicker();
+  }
+
+  // --- Initial mount
+  lastLocalisationValue = getLocalisationValue() || null;
+  buildPicker();
+
+  // --- Watch localisation changes
+  if (localisationEl) {
+    // 1) MutationObserver for attribute changes (setAttribute('value', ...))
+    const mo = new MutationObserver(() => rebuildPickerIfNeeded());
+    mo.observe(localisationEl, {
+      attributes: true,
+      attributeFilter: ["value"],
+    });
+
+    // 2) Polling fallback for .value assignment (input.value = '...')
+    // Light interval; only does string compare and exits quickly.
+    const POLL_MS = 250;
+    setInterval(() => rebuildPickerIfNeeded(), POLL_MS);
+
+    log("Watching #localisation changes (mutation + polling).");
+  } else {
+    warn("No #localisation input found; restriction-by-localisation won't react to changes.");
+  }
+});
 })();
