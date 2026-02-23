@@ -65,33 +65,30 @@ function getLocalisationValue() {
 function isRestrictedLocalisation(localisationValue) {
   if (!localisationValue) return false;
 
-  // Strict match
-  if (localisationValue === RESTRICTED_LOCALISATION_URL) return true;
-
-  // Defensive match by params (in case ordering changes)
   try {
     const u = new URL(localisationValue);
     const p = u.searchParams;
+
     return (
       u.origin === "https://booking.mjholidays.com" &&
       u.pathname.includes("/premium/index2.html") &&
       p.get("id_stile") === "22444" &&
-      p.get("lingua_int") === "eng" &&
       p.get("id_albergo") === "29785" &&
       p.get("dc") === "1820"
+      // 🚫 lingua_int intentionally ignored
     );
   } catch (e) {
-    // URL() may fail if the string is malformed; fallback to substring checks
+    // Fallback if URL() fails
     return (
       localisationValue.includes("booking.mjholidays.com/premium/index2.html") &&
       localisationValue.includes("id_stile=22444") &&
-      localisationValue.includes("lingua_int=eng") &&
       localisationValue.includes("id_albergo=29785") &&
       localisationValue.includes("dc=1820")
+      // 🚫 no lingua_int check
     );
   }
 }
-
+  
 function getOctFirst(todayDayjs) {
   const year = todayDayjs.year();
   // Month is 0-based, 9 = October
