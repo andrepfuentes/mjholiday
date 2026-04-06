@@ -25,7 +25,7 @@
   const DEBUG = false;
 
   const SELECTORS = {
-    bookingButton: '.button.is-booking',
+    bookingButton: '[holiday-code="international"], [holiday-code="local"]',
     localisationInput: '#localisation',
     localisationError: '.booking-bar_localisation_error',
     localisationTriggers: '[localisation-url]',
@@ -62,7 +62,6 @@
   }
 
   function parseDDMMYYYY(dateStr) {
-    // Returns { dd, mm, yyyy } or null
     if (!dateStr || typeof dateStr !== 'string') return null;
     const parts = dateStr.split('/');
     if (parts.length !== 3) return null;
@@ -73,13 +72,10 @@
   }
 
   function computeNights(arrive, depart) {
-    // arrive/depart are { dd, mm, yyyy }
     const start = new Date(`${arrive.yyyy}-${arrive.mm}-${arrive.dd}`);
     const end = new Date(`${depart.yyyy}-${depart.mm}-${depart.dd}`);
     const diffMs = end.getTime() - start.getTime();
     const nights = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-    // Safety: at least 1 night
     return Math.max(1, nights);
   }
 
@@ -97,16 +93,15 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    const bookingButton = $(SELECTORS.bookingButton);
-    if (!bookingButton) {
-      warn(`Booking button not found (${SELECTORS.bookingButton}).`);
+    const bookingButtons = document.querySelectorAll(SELECTORS.bookingButton);
+    if (!bookingButtons.length) {
+      warn(`Booking buttons not found (${SELECTORS.bookingButton}).`);
       return;
     }
 
     const localisationInput = $(SELECTORS.localisationInput);
     const localisationError = $(SELECTORS.localisationError);
 
-    // Fallback base URL from nav link
     const fallbackBaseUrl = $(SELECTORS.fallbackBookLink)?.getAttribute('href')?.trim() || '';
     log('Initialized', { fallbackBaseUrl });
 
@@ -122,66 +117,66 @@
     });
 
     // 2) Booking CTA: build URL and open in new tab
-    bookingButton.addEventListener('click', (e) => {
-      e.preventDefault();
+    bookingButtons.forEach((bookingButton) => {
+      bookingButton.addEventListener('click', (e) => {
+        e.preventDefault();
 
-      const userBaseUrl = localisationInput?.value?.trim() || '';
-      const finalBaseUrl = userBaseUrl || fallbackBaseUrl;
+        const isLocal = e.currentTarget.getAttribute('holiday-code') === 'local';
 
-      if (!finalBaseUrl) {
-        showLocalisationError(localisationError);
-        warn('No base URL detected (no localisation + no fallback).');
-        return;
-      }
+        const userBaseUrl = localisationInput?.value?.trim() || '';
+        const finalBaseUrl = userBaseUrl || fallbackBaseUrl;
 
-      const arriveStr = $(SELECTORS.arrive)?.value || '';
-      const departStr = $(SELECTORS.depart)?.value || '';
+        if (!finalBaseUrl) {
+          showLocalisationError(localisationError);
+          warn('No base URL detected (no localisation + no fallback).');
+          return;
+        }
 
-      const arrive = parseDDMMYYYY(arriveStr);
-      const depart = parseDDMMYYYY(departStr);
+        const arriveStr = $(SELECTORS.arrive)?.value || '';
+        const departStr = $(SELECTORS.depart)?.value || '';
 
-      if (!arrive || !depart) {
-        warn('Missing or invalid arrival/departure dates.', { arriveStr, departStr });
-        return;
-      }
+        const arrive = parseDDMMYYYY(arriveStr);
+        const depart = parseDDMMYYYY(departStr);
 
-      const adultes = toInt($(SELECTORS.adultes)?.value, 1);
-      const kids = toInt($(SELECTORS.kids)?.value, 0);
-      const codePromo = $(SELECTORS.codePromo)?.value?.trim() || '';
-      const linguaInt = getLangCode();
+        if (!arrive || !depart) {
+          warn('Missing or invalid arrival/departure dates.', { arriveStr, departStr });
+          return;
+        }
 
-      const nights = computeNights(arrive, depart);
+        const adultes = toInt($(SELECTORS.adultes)?.value, 1);
+        const kids = toInt($(SELECTORS.kids)?.value, 0);
+        const codePromo = isLocal ? 'LOCAL' : ($(SELECTORS.codePromo)?.value?.trim() || '');
+        const linguaInt = getLangCode();
 
-      const params = new URLSearchParams({
-        tot_camere: '1',
-        tot_adulti: String(adultes),
-        tot_bambini: String(kids),
+        const nights = computeNights(arrive, depart);
 
-        // arrival
-        gg: arrive.dd,
-        mm: arrive.mm,
-        aa: arrive.yyyy,
+        const params = new URLSearchParams({
+          tot_camere: '1',
+          tot_adulti: String(adultes),
+          tot_bambini: String(kids),
 
-        // departure
-        ggf: depart.dd,
-        mmf: depart.mm,
-        aaf: depart.yyyy,
+          gg: arrive.dd,
+          mm: arrive.mm,
+          aa: arrive.yyyy,
 
-        // nights & room breakdown
-        notti_1: String(nights),
-        adulti1: String(adultes),
-        bambini1: String(kids),
+          ggf: depart.dd,
+          mmf: depart.mm,
+          aaf: depart.yyyy,
 
-        // language
-        lingua_int: linguaInt,
+          notti_1: String(nights),
+          adulti1: String(adultes),
+          bambini1: String(kids),
+
+          lingua_int: linguaInt,
+        });
+
+        if (codePromo) params.append('generic_codice', codePromo);
+
+        const finalUrl = buildFinalUrl(finalBaseUrl, params);
+        log('Redirecting', { finalUrl });
+
+        window.open(finalUrl, '_blank');
       });
-
-      if (codePromo) params.append('generic_codice', codePromo);
-
-      const finalUrl = buildFinalUrl(finalBaseUrl, params);
-      log('Redirecting', { finalUrl });
-
-      window.open(finalUrl, '_blank');
     });
   });
 })();
