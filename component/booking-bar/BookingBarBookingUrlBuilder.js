@@ -26,9 +26,11 @@
 
   const SELECTORS = {
     bookingButton: '[holiday-code="international"], [holiday-code="local"]',
+    bookingTrigger: '.button.is-booking',
     localisationInput: '#localisation',
     localisationError: '.booking-bar_localisation_error',
     localisationTriggers: '[localisation-url]',
+    buttonInteraction: '.button_interaction',
     fallbackBookLink: '[mjholidays-element="book-nav"]',
 
     arrive: '#arrive',
@@ -101,22 +103,38 @@
 
     const localisationInput = $(SELECTORS.localisationInput);
     const localisationError = $(SELECTORS.localisationError);
+    const buttonInteraction = $(SELECTORS.buttonInteraction);
 
     const fallbackBaseUrl = $(SELECTORS.fallbackBookLink)?.getAttribute('href')?.trim() || '';
     log('Initialized', { fallbackBaseUrl });
 
-    // 1) Localisation selection: write chosen URL into hidden input
+    // 1) Localisation selection: write chosen URL into hidden input + reveal interaction button
     document.querySelectorAll(SELECTORS.localisationTriggers).forEach((el) => {
       el.addEventListener('click', () => {
         const url = el.getAttribute('localisation-url')?.trim();
         if (!url) return;
 
         if (localisationInput) localisationInput.value = url;
+        if (buttonInteraction) buttonInteraction.style.display = 'block';
         log('Localisation set', { url });
       });
     });
 
-    // 2) Booking CTA: build URL and open in new tab
+    // 2) Pre-flight guard on .button.is-booking: block if no destination selected
+    const bookingTrigger = $(SELECTORS.bookingTrigger);
+    if (bookingTrigger) {
+      bookingTrigger.addEventListener('click', (e) => {
+        const hasDestination = !!(localisationInput?.value?.trim());
+        if (!hasDestination) {
+          e.preventDefault();
+          e.stopPropagation();
+          showLocalisationError(localisationError);
+          warn('No destination selected — blocking booking trigger.');
+        }
+      });
+    }
+
+    // 3) Booking CTA: build URL and open in new tab
     bookingButtons.forEach((bookingButton) => {
       bookingButton.addEventListener('click', (e) => {
         e.preventDefault();
