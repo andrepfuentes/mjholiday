@@ -32,6 +32,7 @@ const SELECTORS = {
   localisationTriggers: '[localisation-url]',
   buttonInteraction: '.button_interaction',
   fallbackBookLink: '[mjholidays-element="book-nav"]',
+  navbarBookTrigger: '[mjholiday-element="book-nav"]',
 
   arrive: '#arrive',
   depart: '#depart',
@@ -125,17 +126,17 @@ document.addEventListener('DOMContentLoaded', () => {
   if (bookingTrigger) {
     bookingTrigger.addEventListener('click', (e) => {
       const hasDestination = !!(localisationInput?.value?.trim());
-if (!hasDestination) {
-e.preventDefault();
-e.stopPropagation();
-const navbarBook = document.querySelector('[mjholiday-element="book-navbar"]');
-if (navbarBook) {
-  navbarBook.click();
-} else {
-  showLocalisationError(localisationError);
-  warn('No destination selected and [mjholiday-element="book-navbar"] not found.');
-}
-}
+      if (!hasDestination) {
+        e.preventDefault();
+        e.stopPropagation();
+        const navbarBook = $(SELECTORS.navbarBookTrigger);
+        if (navbarBook) {
+          navbarBook.click();
+        } else {
+          showLocalisationError(localisationError);
+          warn('No destination selected and [mjholiday-element="book-nav"] not found.');
+        }
+      }
     });
   }
 
