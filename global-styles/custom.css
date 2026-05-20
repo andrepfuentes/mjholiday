@@ -47,17 +47,6 @@
     }
   }
 
-.loader {
-    opacity: 1;
-    animation: growFadeOut 1.5s ease-out 1.5s forwards;
-  }
-
-@keyframes growFadeOut {
-    to {
-      opacity: 0;
-    }
-  }
-
   .carnet_pagination_button.w--current {
     color: rgba(0, 0, 0, 1);
   }
