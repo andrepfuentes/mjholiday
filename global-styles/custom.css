@@ -32,7 +32,8 @@
     scrollbar-width: none;  /* Firefox */
   }
 
-  .page-wrapper {
+  .page-wrapper,
+  .loader {
     opacity: 0;
     animation: growFadeIn 1s ease-out 1s forwards;
   }
