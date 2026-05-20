@@ -2,7 +2,7 @@
 * ---------------------------------------------------------------------------
 * BOOKING BAR — LITEPICKER RANGE + UI SYNC (Webflow)
 * + Reacts to localisation input changes (MutationObserver + polling fallback)
-* + For one specific localisation URL: disable dates until Oct 1 (current year)
+* + For one specific localisation URL (Eko Savannah): disable dates before Jan 15, 2027
 * ---------------------------------------------------------------------------
 */
 
@@ -19,10 +19,6 @@ const SELECTORS = {
 
 const DATE_FORMAT = "DD/MM/YYYY";
 const MOBILE_BREAKPOINT = 768;
-
-// If localisation matches this property, disable all dates before Oct 1 (current year)
-const RESTRICTED_LOCALISATION_URL =
-  "https://booking.mjholidays.com/premium/index2.html?id_stile=22444&lingua_int=eng&id_albergo=29785&dc=1820";
 
 const log = (...args) => DEBUG && console.log("[BookingBar Litepicker]", ...args);
 const warn = (...args) => console.warn("[BookingBar Litepicker]", ...args);
@@ -89,20 +85,12 @@ function isRestrictedLocalisation(localisationValue) {
   }
 }
   
-function getOctFirst(todayDayjs) {
-  const year = todayDayjs.year();
-  // Month is 0-based, 9 = October
-  return dayjs(new Date(year, 9, 1, 0, 0, 0, 0));
-}
-
 function computeMinDateDayjs(todayDayjs, localisationValue) {
   const restricted = isRestrictedLocalisation(localisationValue);
   if (!restricted) return todayDayjs;
 
-  const octFirst = getOctFirst(todayDayjs);
-  // Only enforce restriction if we are before Oct 1
-  if (todayDayjs.isBefore(octFirst, "day")) return octFirst;
-
+  const ekoOpen = dayjs(new Date(2027, 0, 15, 0, 0, 0, 0)); // Jan 15, 2027
+  if (todayDayjs.isBefore(ekoOpen, "day")) return ekoOpen;
   return todayDayjs;
 }
 
